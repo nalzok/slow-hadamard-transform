@@ -45,10 +45,11 @@ void set_hadamard_params(HadamardParamsBase &params,
                          const size_t batch,
                          const size_t dim,
                          const size_t multiple,
+                         const bool scale_first,
                          // device pointers
                          const at::Tensor x,
-                         const at::Tensor out,
-                         float scale
+                         const at::Tensor scales,
+                         const at::Tensor out
                          ) {
 
     // Reset the parameters
@@ -57,37 +58,48 @@ void set_hadamard_params(HadamardParamsBase &params,
     params.batch = batch;
     params.dim = dim;
     params.log_N = int(ceil(std::log2(dim / multiple)));
+    params.scale_first = scale_first;
 
     // Set the pointers and strides.
     params.x_ptr = x.data_ptr();
+    params.scales_ptr = scales.data_ptr();
     params.out_ptr = out.data_ptr();
     // All stride are in elements, not bytes.
     params.x_batch_stride = x.stride(0);
+    params.scales_batch_stride = scales.stride(0);
     params.out_batch_stride = out.stride(0);
-
-    params.scale = scale;
 }
 
 
 at::Tensor
-fast_hadamard_transform(at::Tensor &x, float scale) {
+fast_hadamard_transform(at::Tensor &x, at::Tensor &scales, bool scale_first) {
     auto input_type = x.scalar_type();
     TORCH_CHECK(input_type == at::ScalarType::Float || input_type == at::ScalarType::Half || input_type == at::ScalarType::BFloat16);
+    TORCH_CHECK(scales.scalar_type() == input_type);
 
     TORCH_CHECK(x.is_cuda());
+    TORCH_CHECK(scales.is_cuda());
+
+    TORCH_CHECK(scales.sizes() == x.sizes());
 
     const auto shapes_og = x.sizes();
     const int dim_og = x.size(-1);
     x = x.reshape({-1, dim_og});
-    if (x.stride(-1) != 1) { x = x.contiguous(); }
+    scales = scales.reshape({-1, dim_og});
+    if (x.stride(-1) != 1) {
+        x = x.contiguous();
+        scales = scales.contiguous();
+    }
     const auto sizes = x.sizes();
     const int batch_size = sizes[0];
 
     CHECK_SHAPE(x, batch_size, dim_og);
     TORCH_CHECK(x.stride(1) == 1);
+    TORCH_CHECK(scales.stride(1) == 1);
 
     if (dim_og % 8 != 0) {
         x = torch::nn::functional::pad(x, torch::nn::functional::PadFuncOptions({0, 8 - dim_og % 8}));
+        scales = torch::nn::functional::pad(x, torch::nn::functional::PadFuncOptions({0, 8 - dim_og % 8}));
     }
     const int dim = x.size(1);
 
@@ -97,7 +109,7 @@ fast_hadamard_transform(at::Tensor &x, float scale) {
     at::Tensor out = torch::empty_like(x);
 
     HadamardParamsBase params;
-    set_hadamard_params(params, batch_size, dim, 1, x, out, scale);
+    set_hadamard_params(params, batch_size, dim, 1, scale_first, x, scales, out);
 
     // Otherwise the kernel will be launched from cuda:0 device
     // Cast to char to avoid compiler warning about narrowing
@@ -113,7 +125,7 @@ fast_hadamard_transform(at::Tensor &x, float scale) {
 }
 
 at::Tensor
-fast_hadamard_transform_12N(at::Tensor &x, float scale) {
+fast_hadamard_transform_12N(at::Tensor &x, at::Tensor &scales, bool scale_first) {
     auto input_type = x.scalar_type();
     TORCH_CHECK(input_type == at::ScalarType::Float || input_type == at::ScalarType::Half || input_type == at::ScalarType::BFloat16);
 
@@ -140,7 +152,7 @@ fast_hadamard_transform_12N(at::Tensor &x, float scale) {
     at::Tensor out = torch::empty_like(x);
 
     HadamardParamsBase params;
-    set_hadamard_params(params, batch_size, dim, 12, x, out, scale);
+    set_hadamard_params(params, batch_size, dim, 12, scale_first, x, scales, out);
 
     // Otherwise the kernel will be launched from cuda:0 device
     // Cast to char to avoid compiler warning about narrowing
@@ -156,7 +168,7 @@ fast_hadamard_transform_12N(at::Tensor &x, float scale) {
 }
 
 at::Tensor
-fast_hadamard_transform_20N(at::Tensor &x, float scale) {
+fast_hadamard_transform_20N(at::Tensor &x, at::Tensor &scales, bool scale_first) {
     auto input_type = x.scalar_type();
     TORCH_CHECK(input_type == at::ScalarType::Float || input_type == at::ScalarType::Half || input_type == at::ScalarType::BFloat16);
 
@@ -183,7 +195,7 @@ fast_hadamard_transform_20N(at::Tensor &x, float scale) {
     at::Tensor out = torch::empty_like(x);
 
     HadamardParamsBase params;
-    set_hadamard_params(params, batch_size, dim, 20, x, out, scale);
+    set_hadamard_params(params, batch_size, dim, 20, scale_first, x, scales, out);
 
     // Otherwise the kernel will be launched from cuda:0 device
     // Cast to char to avoid compiler warning about narrowing
@@ -199,7 +211,7 @@ fast_hadamard_transform_20N(at::Tensor &x, float scale) {
 }
 
 at::Tensor
-fast_hadamard_transform_28N(at::Tensor &x, float scale) {
+fast_hadamard_transform_28N(at::Tensor &x, at::Tensor &scales, bool scale_first) {
     auto input_type = x.scalar_type();
     TORCH_CHECK(input_type == at::ScalarType::Float || input_type == at::ScalarType::Half || input_type == at::ScalarType::BFloat16);
 
@@ -227,7 +239,7 @@ fast_hadamard_transform_28N(at::Tensor &x, float scale) {
     at::Tensor out = torch::empty_like(x);
 
     HadamardParamsBase params;
-    set_hadamard_params(params, batch_size, dim, 28, x, out, scale);
+    set_hadamard_params(params, batch_size, dim, 28, scale_first, x, scales, out);
 
     // Otherwise the kernel will be launched from cuda:0 device
     // Cast to char to avoid compiler warning about narrowing
@@ -243,7 +255,7 @@ fast_hadamard_transform_28N(at::Tensor &x, float scale) {
 }
 
 at::Tensor
-fast_hadamard_transform_40N(at::Tensor &x, float scale) {
+fast_hadamard_transform_40N(at::Tensor &x, at::Tensor &scales, bool scale_first) {
     auto input_type = x.scalar_type();
     TORCH_CHECK(input_type == at::ScalarType::Float || input_type == at::ScalarType::Half || input_type == at::ScalarType::BFloat16);
 
@@ -270,7 +282,7 @@ fast_hadamard_transform_40N(at::Tensor &x, float scale) {
     at::Tensor out = torch::empty_like(x);
 
     HadamardParamsBase params;
-    set_hadamard_params(params, batch_size, dim, 40, x, out, scale);
+    set_hadamard_params(params, batch_size, dim, 40, scale_first, x, scales, out);
 
     // Otherwise the kernel will be launched from cuda:0 device
     // Cast to char to avoid compiler warning about narrowing

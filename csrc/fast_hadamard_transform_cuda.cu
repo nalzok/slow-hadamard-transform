@@ -184,10 +184,17 @@ void fast_hadamard_transform_kernel(HadamardParamsBase params) {
 
     const int batch_id = blockIdx.x;
     input_t *x = reinterpret_cast<input_t *>(params.x_ptr) + batch_id * params.x_batch_stride;
+    input_t *scales = reinterpret_cast<input_t *>(params.scales_ptr) + batch_id * params.scales_batch_stride;
     input_t *out = reinterpret_cast<input_t *>(params.out_ptr) + batch_id * params.out_batch_stride;
 
     float x_vals[kNChunks][kNElts];
-    load_input<kNChunks, kNElts, input_t>(x, x_vals, params.dim);
+    float scales_vals[kNChunks][kNElts];
+    if (params.scale_first) {
+        load_scaled_input<kNChunks, kNElts, input_t>(x, scales, x_vals, params.dim);
+    } else {
+        load_input<kNChunks, kNElts, input_t>(x, x_vals, params.dim);
+        load_input<kNChunks, kNElts, input_t>(scales, scales_vals, params.dim);
+    }
 
     hadamard_mult_thread<kLogNElts, kNChunks>(x_vals);
     hadamard_mult_warp<kLogWarpSize, 0, kNChunks, kNElts>(x_vals);
@@ -225,7 +232,11 @@ void fast_hadamard_transform_kernel(HadamardParamsBase params) {
         }
     }
 
-    store_output<kNChunks, kNElts, input_t>(out, x_vals, params.dim, params.scale);
+    if (params.scale_first) {
+        store_output<kNChunks, kNElts, input_t>(out, x_vals, params.dim);
+    } else {
+        store_scaled_output<kNChunks, kNElts, input_t>(out, x_vals, scales_vals, params.dim);
+    }
 }
 
 template<int kNThreads, int kLogN, typename input_t>

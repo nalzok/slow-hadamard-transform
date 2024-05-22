@@ -31,7 +31,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
 # ninja build does not work unless include_dirs are abs path
 this_dir = os.path.dirname(os.path.abspath(__file__))
 
-PACKAGE_NAME = "fast_hadamard_transform"
+PACKAGE_NAME = "slow_hadamard_transform"
 
 BASE_WHEEL_URL = "https://github.com/Dao-AILab/fast-hadamard-transform/releases/download/{tag_name}/{wheel_name}"
 
@@ -93,14 +93,14 @@ if not SKIP_CUDA_BUILD:
     TORCH_MAJOR = int(torch.__version__.split(".")[0])
     TORCH_MINOR = int(torch.__version__.split(".")[1])
 
-    check_if_cuda_home_none("fast_hadamard_transform")
+    check_if_cuda_home_none("slow_hadamard_transform")
     # Check, if CUDA11 is installed for compute capability 8.0
     cc_flag = []
     if CUDA_HOME is not None:
         _, bare_metal_version = get_cuda_bare_metal_version(CUDA_HOME)
         if bare_metal_version < Version("11.6"):
             raise RuntimeError(
-                "fast_hadamard_transform is only supported on CUDA 11.6 and above.  "
+                "slow_hadamard_transform is only supported on CUDA 11.6 and above.  "
                 "Note: make sure nvcc has a supported version by running nvcc -V."
             )
 
@@ -120,7 +120,7 @@ if not SKIP_CUDA_BUILD:
 
     ext_modules.append(
         CUDAExtension(
-            name="fast_hadamard_transform_cuda",
+            name="slow_hadamard_transform_cuda",
             sources=[
                 "csrc/fast_hadamard_transform.cpp",
                 "csrc/fast_hadamard_transform_cuda.cu",
@@ -151,7 +151,7 @@ if not SKIP_CUDA_BUILD:
 
 
 def get_package_version():
-    with open(Path(this_dir) / "fast_hadamard_transform" / "__init__.py", "r") as f:
+    with open(Path(this_dir) / "slow_hadamard_transform" / "__init__.py", "r") as f:
         version_match = re.search(r"^__version__\s*=\s*(.*)$", f.read(), re.MULTILINE)
     public_version = ast.literal_eval(version_match.group(1))
     local_version = os.environ.get("FAST_HADAMARD_TRANSFORM_LOCAL_VERSION")
@@ -172,16 +172,16 @@ def get_wheel_url():
     torch_cuda_version = parse("11.8") if torch_cuda_version.major == 11 else parse("12.2")
     python_version = f"cp{sys.version_info.major}{sys.version_info.minor}"
     platform_name = get_platform()
-    fast_hadamard_transform_version = get_package_version()
+    slow_hadamard_transform_version = get_package_version()
     # cuda_version = f"{cuda_version_raw.major}{cuda_version_raw.minor}"
     cuda_version = f"{torch_cuda_version.major}{torch_cuda_version.minor}"
     torch_version = f"{torch_version_raw.major}.{torch_version_raw.minor}"
     cxx11_abi = str(torch._C._GLIBCXX_USE_CXX11_ABI).upper()
 
     # Determine wheel URL based on CUDA version, torch version, python version and OS
-    wheel_filename = f"{PACKAGE_NAME}-{fast_hadamard_transform_version}+cu{cuda_version}torch{torch_version}cxx11abi{cxx11_abi}-{python_version}-{python_version}-{platform_name}.whl"
+    wheel_filename = f"{PACKAGE_NAME}-{slow_hadamard_transform_version}+cu{cuda_version}torch{torch_version}cxx11abi{cxx11_abi}-{python_version}-{python_version}-{platform_name}.whl"
     wheel_url = BASE_WHEEL_URL.format(
-        tag_name=f"v{fast_hadamard_transform_version}", wheel_name=wheel_filename
+        tag_name=f"v{slow_hadamard_transform_version}", wheel_name=wheel_filename
     )
     return wheel_url, wheel_filename
 
@@ -233,7 +233,7 @@ setup(
             "dist",
             "docs",
             "benchmarks",
-            "fast_hadamard_transform.egg-info",
+            "slow_hadamard_transform.egg-info",
         )
     ),
     author="Tri Dao",

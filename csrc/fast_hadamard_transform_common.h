@@ -18,8 +18,7 @@ struct uint8 {
 
 template<int BYTES> struct BytesToType {};
 
-template<>
-struct BytesToType<32> {
+template<> struct BytesToType<32> {
     using Type = uint8;
     static_assert(sizeof(Type) == 32);
 };
@@ -142,15 +141,54 @@ inline __device__ void load_input(input_t *x, float x_vals[kNChunks][kNElts], in
     }
 }
 
+template <int kNChunks, int kNElts, typename input_t>
+inline __device__ void load_scaled_input(input_t *x, input_t *scales, float scaled_vals[kNChunks][kNElts], int dim) {
+    using vec_t = typename BytesToType<sizeof(input_t) * kNElts>::Type;
+    input_t x_vals_load[kNChunks][kNElts] = {0};
+    input_t scales_vals_load[kNChunks][kNElts] = {0};
+    #pragma unroll
+    for (int c = 0; c < kNChunks; ++c) {
+        if ((c * blockDim.x + threadIdx.x) * kNElts < dim) {
+            int idx = c * blockDim.x + threadIdx.x;
+            reinterpret_cast<vec_t*>(x_vals_load)[c] = reinterpret_cast<const vec_t*>(x)[idx];
+            reinterpret_cast<vec_t*>(scales_vals_load)[c] = reinterpret_cast<const vec_t*>(scales)[idx];
+        }
+    }
+    #pragma unroll
+    for (int c = 0; c < kNChunks; ++c) {
+        #pragma unroll
+        for (int i = 0; i < kNElts; ++i) {
+            scaled_vals[c][i] = float(x_vals_load[c][i]) * float(scales_vals_load[c][i]);
+        }
+    }
+}
 
 template <int kNChunks, int kNElts, typename output_t>
-inline __device__ void store_output(output_t *out, float out_vals[kNChunks][kNElts], int dim, float scale=1.f) {
+inline __device__ void store_output(output_t *out, float out_vals[kNChunks][kNElts], int dim) {
     using vec_t = typename BytesToType<sizeof(output_t) * kNElts>::Type;
     output_t out_vals_store[kNChunks][kNElts];
     #pragma unroll
     for (int c = 0; c < kNChunks; ++c) {
         #pragma unroll
-        for (int i = 0; i < kNElts; ++i) { out_vals_store[c][i] = out_vals[c][i] * scale; }
+        for (int i = 0; i < kNElts; ++i) { out_vals_store[c][i] = out_vals[c][i]; }
+    }
+    #pragma unroll
+    for (int c = 0; c < kNChunks; ++c) {
+        if ((c * blockDim.x + threadIdx.x) * kNElts < dim) {
+            reinterpret_cast<vec_t*>(out)[c * blockDim.x + threadIdx.x] = reinterpret_cast<const vec_t*>(out_vals_store)[c];
+        }
+    }
+}
+
+template <int kNChunks, int kNElts, typename output_t>
+inline __device__ void store_scaled_output(
+        output_t *out, float out_vals[kNChunks][kNElts], float scales_vals[kNChunks][kNElts], int dim) {
+    using vec_t = typename BytesToType<sizeof(output_t) * kNElts>::Type;
+    output_t out_vals_store[kNChunks][kNElts];
+    #pragma unroll
+    for (int c = 0; c < kNChunks; ++c) {
+        #pragma unroll
+        for (int i = 0; i < kNElts; ++i) { out_vals_store[c][i] = out_vals[c][i] * scales_vals[c][i]; }
     }
     #pragma unroll
     for (int c = 0; c < kNChunks; ++c) {
